@@ -1,0 +1,502 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>CRUD med jQuery, AJAX og PHP</title>
+	<!-- Latest compiled and minified CSS for Bootstrap -->
+	<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css" integrity="sha384-1q8mTJOASx8j1Au+a5WDVnPi2lkFfwwEAa8hDDdjZlpLegxhjVME1fgjWPGmkzs7" crossorigin="anonymous">
+	<style>
+		/* Klasse til at få ikoner til at dreje rundt*/
+		.glyphicon-spin {
+			-webkit-animation: spin 1000ms infinite linear;
+			animation: spin 1000ms infinite linear;
+		}
+		@-webkit-keyframes spin {
+			0% {
+				-webkit-transform: rotate(0deg);
+				transform: rotate(0deg);
+			}
+			100% {
+				-webkit-transform: rotate(359deg);
+				transform: rotate(359deg);
+			}
+		}
+		@keyframes spin {
+			0% {
+				-webkit-transform: rotate(0deg);
+				transform: rotate(0deg);
+			}
+			100% {
+				-webkit-transform: rotate(359deg);
+				transform: rotate(359deg);
+			}
+		}
+
+		@media(min-width:768px) {
+			body {
+				margin-top: 50px;
+			}
+		}
+	</style>
+</head>
+
+<body>
+<div class="container">
+	<h1>CRUD med jQuery, AJAX og PHP</h1>
+
+	<form id="form1">
+		<div class="form-group has-feedback">
+			<label for="brugernavn">Brugernavn:</label>
+			<input type="text" class="form-control" id="brugernavn" required>
+		</div>
+
+		<div class="form-group has-feedback">
+			<label for="email">E-mail-adresse:</label>
+			<input type="email"class="form-control" id="email" required>
+		</div>
+		<p id="status"></p>
+		<button type="submit" class="btn btn-primary" id="opret_bruger" disabled>Opret ny bruger</button>
+
+		<button type="submit" class="btn btn-primary" id="rediger_bruger" disabled style="display: none">Rediger bruger</button>
+
+		<button type="button" class="btn btn-default" id="annuller" style="display: none">Annullér</button>
+
+		<button type="button" class="btn btn-default" id="vis_alle_brugere">Vis alle brugere</button>
+	</form>
+
+	<div class="panel panel-default" id="brugere_container" style="display: none; margin-top: 30px">
+		<div class="panel-heading" id="status2">Alle brugere</div>
+		<div class="panel-body table-responsive">
+			<table class="table table-striped">
+				<thead>
+				<tr>
+					<th>#</th>
+					<th>Brugernavn</th>
+					<th>E-mail-adresse</th>
+					<th></th>
+					<th></th>
+				</tr>
+				</thead>
+				<tbody id="brugere"></tbody>
+			</table>
+		</div>
+	</div>
+</div>
+<!-- Link til jQuery, kan også includes -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.2/jquery.min.js"></script>
+<!-- Latest compiled and minified JavaScript for Bootstrap -->
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js" integrity="sha384-0mSbJDEHialfmuBBQP6A4Qrprq5OVfW37PRR3j5ELqxss1yVqOtnepnHVP9aJ7xS" crossorigin="anonymous"></script>
+<script type="text/javascript">
+// Kør dette når siden er færdigindlæst
+$(document).ready(function() {
+	// Funktion til at tilføje styling til input uden fejl, og fjerner evt gammel styling og fejlbeskeder.
+	function add_success(parent) {
+		$(parent).removeClass('has-error');
+		$(parent).children('.form-control-feedback, .help-block').remove();
+		$(parent).addClass('has-success');
+		$(parent).append('<span class="glyphicon glyphicon-ok form-control-feedback" aria-hidden="true"></span>');
+	}
+	// Funktion til at tilføje styling til input der indikerer loading, og fjerner evt gammel styling og fejlbeskeder.
+	function add_loading(input) {
+		$(input).parent().removeClass('has-error has-success');
+		$(input).nextAll('.form-control-feedback, .help-block').remove();
+		$(input).after('<span class="glyphicon glyphicon-refresh glyphicon-spin form-control-feedback" aria-hidden="true"></span>');
+	}
+	// Funktion til at tilføje styling og fejlbesked, samt fjerner evt styling fra fejl og tidligere fejlbeskeder.
+	function add_error(parent, errortext) {
+		$(parent).removeClass('has-success');
+		$(parent).children('.form-control-feedback, .help-block').remove();
+		$(parent).addClass('has-error');
+		$(parent).append('<span class="glyphicon glyphicon-remove form-control-feedback" aria-hidden="true"></span><span class="help-block">' + errortext + '</span>');
+	}
+
+	// Funktion der i form søger efter klassen .has-feedback og tjekker om den også har klassen .has-error, for derefter at sætte property disabled på submit-knappen. Den søger også efter om påkrævede felter mangler at blive udfyldt. Koden køres kun hvis disable_submit er true
+	function search_for_error_in_form() {
+		var invalid_count = 0;
+		// For hvert element med required i form...
+		$('#form1 [required]').each(function() {
+			// ...tjekkes om den aktuelle værdi er tom...
+			if ( $(this).val() == "" ) {
+				//... er det tilfældet, plusses 1 til variablen invalid_count
+				invalid_count++;
+			}
+		});
+
+		// Find elementer i form med klassen .has-feedback og tjek om nogle har klassen has-error. Hvis det er er tilfældet, eller invalid_count ovenfra er større end 0...
+		if ( $('#form1').find('.has-feedback').hasClass('has-error') || invalid_count > 0) {
+			// Find submit-knappen i formularen og tilføj attributten disabled
+			$('#form1').find('[type="submit"]').prop('disabled', true);
+		} else {
+			// Fint submit-knappen i formularen og fjern attributten disabled
+			$('#form1').find('[type="submit"]').removeAttr('disabled');
+		}
+	}
+
+	// Funktion der nulstiller form
+	function reset_form() {
+		// For hvert input i form...
+		$('#form1 input').each(function() {
+			// Fjerner klasserne has-error eller has-succes
+			$(this).parent().removeClass('has-error has-success');
+			// Fjerner alle ikoner og fejl-beskeder
+			$(this).nextAll('.form-control-feedback, .help-block').remove();
+			// Fjerner værdi i felt
+			$(this).val('');
+		});
+		// Find submit-knappen i formularen og tilføj attributten disabled
+		$('#form1').find('[type="submit"]').prop('disabled', true);
+	}
+
+	// Når der trykkes på en tast i feltet med id brugernavn, køres denne funktion
+	$(document).on('keyup', '#brugernavn', function() {
+		// Kør funktion ad_loading, der tilføjer et roterende ikon til felt, for at indekere indlæsning
+		add_loading( $(this) );
+		// Hvis attributten required er sat på feltet og feltet er tomt
+		if ( $(this).attr('required') && $(this).val() == "" ) {
+			// Kør funktion der tilføjer tekstfarven rød, fejl-ikon og medsendte besked
+			add_error( $(this).parent(), 'Udfyld venligst dette felt');
+		} else {
+			// Gem selector til input
+			var input = $(this);
+			// Kør metoden ajax med data som POST og den returnede data fra angivet url som json
+			$.ajax({
+				type: 'POST',
+				dataType: 'json',
+				contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+				url: 'tjek_brugernavn_tilgaengelighed.php',
+				data: {
+					//Tager værdi fra feltets data-id og sender med
+					id: $(input).data('id'),
+					//Tager værdi fra feltet brugernavn og sender med
+					brugernavn: $(input).val()
+				},
+				// Ved succes gemmes det returnerede data i variablen response
+				success: function (response) {
+					// Hvis værdien på key'en valid er true
+					if (response.valid) {
+						// Kør funktion der tilføjer tekstfarven grøn og et succes-ikon
+						add_success( $(input).parent() );
+					// Hvis værdien på key'en valid er false
+					} else if (!response.valid) {
+						// Kør funktion der tilføjer tekstfarven rød, fejl-ikon og medsendte besked
+						add_error( $(input).parent(), 'Det indtastede brugernavn er ikke tilgængelig' );
+					// Hvis værdien er alt andet, er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+					} else {
+						console.log(response);
+					}
+				} // Luk: success
+			}); // Luk: $.ajax({
+		} // Luk else til: if ( $(this).attr('required') && $(this).val() == "" ) {
+		search_for_error_in_form();
+	}); // Luk: $(document).on('keyup', '#brugernavn'
+
+	// Når der trykkes på en tast i feltet med id email, køres denne funktion
+	$(document).on('keyup', '#email', function() {
+		// Kør funktion ad_loading, der tilføjer et roterende ikon til felt, for at indekere indlæsning
+		add_loading( $(this) );
+		// Hvis attributten required er sat på feltet og feltet er tomt
+		if ( $(this).attr('required') && $(this).val() == "" ) {
+			// Kør funktion der tilføjer tekstfarven rød, fejl-ikon og medsendte besked
+			add_error( $(this).parent(), 'Udfyld venligst dette felt');
+		} else {
+			// Regulært udtræk til at validere e-mail-adresse
+			var emailRegEx = new RegExp(/^([a-zA-Z0-9_.+-])+\@(([a-zA-Z0-9-])+\.)+([a-zA-Z0-9]{2,4})+$/);
+			// Hvis ikke indtastet værdi matcher ovenstående regulære udtræk
+			if ( !emailRegEx.test( $(this).val() ) ) {
+				add_error( $(this).parent(), 'Udfyld venligst dette felt med en gyldig e-mail-adresse');
+				// Hvis værdi godkendes, kan vi tjekke om e-mail-adressen er tilgængelig
+			} else {
+				// Gem selector til input
+				var input = $(this);
+				// Kør metoden ajax med data som POST og den returnede data fra angivet url som json
+				$.ajax({
+					type: 'POST',
+					dataType: 'json',
+					contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+					url: 'tjek_email_tilgaengelighed.php',
+					data: {
+						//Tager værdi fra feltets data-id og sender med
+						id: $(input).data('id'),
+						//Tager værdi fra feltet brugernavn og sender med
+						email: $(input).val()
+					},
+					// Ved succes gemmes det returnerede data i variablen response
+					success: function (response) {
+						// Hvis værdien på key'en valid er true
+						if (response.valid) {
+							// Kør funktion der tilføjer tekstfarven grøn og et succes-ikon
+							add_success($ (input).parent() );
+						// Hvis værdien på key'en valid er false
+						} else if (!response.valid) {
+							// Kør funktion der tilføjer tekstfarven rød, fejl-ikon og medsendte besked
+							add_error($(input).parent(), 'Den indtastede e-mail-adresse er ikke tilgængelig');
+						// Hvis værdien er alt andet, er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+						} else {
+							console.log(response);
+						}
+					} // Luk: success
+				}); // Luk: $.ajax({
+			} // Luk else til: if ( !emailRegEx.test(
+		} // Luk else til: if ( $(this).attr('required') && $(this).val() == "" ) {
+		search_for_error_in_form();
+	}); // Luk: $(document).on('keyup', '#brugernavn'
+
+	// Når der klikkes på knappen med id'et "opret_bruger" køres denne funktion
+	$(document).on('click', '#opret_bruger', function(e) {
+		// Forhindrer standard handling (send formular)
+		e.preventDefault();
+		//  Gem selector til vores knap i variablen btn
+		var btn = $(this);
+		// Gem nuværende tekst fra knappen i variablen btn_txt
+		var btn_txt = btn.text();
+		// For at signalere indlæsningstilstand, tilføjes klassen disabled og teksten "Indlæser..." til vores knap
+		btn.text('Indlæser...').addClass('disabled');
+		// Gem selector til vores status-felt i variablen status
+		var status = $('#status');
+		// Opret object med data fra felter til at poste med ajax til filer
+		var data_object = {
+			//Tager værdi fra feltet brugernavn og sender med
+			brugernavn:$('#brugernavn').val(),
+			// Tager værdi fra feltet email og sender med
+			email:$('#email').val()
+		};
+
+		// Kør metoden ajax med data som POST og den returnede data fra angivet url som json
+		$.ajax({
+			type: 'POST',
+			dataType: 'json',
+			contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+			url: 'opret_bruger.php',
+			data: data_object,
+			// Ved succes gemmes det returnerede data i variablen response
+			success: function (response) {
+				// Hvis det lykkedes at oprette den nye bruger
+				if (response.status == true) {
+					status.attr('class', 'text-success');
+					status.text("Den nye bruger blev oprettet");
+					// Opret variablen til besked ved bekræftigelse af sletning
+					var confirm_txt = "'Er du sikker på du vil slette denne bruger?'";
+					// Tilføj bruger til visning i tabel med rækken skjult, da vi vil bruge .fadeIn til visning, så man er mere opmærksom herpå
+					$('#brugere').append('<tr class="info" style="display: none;"><td>' + response.id + '</td><td>' + data_object.brugernavn + '</td><td>' + data_object.email + '</td><td><button type="button" class="btn btn-warning btn-xs hent_bruger" id="' + response.id + '"><i class="glyphicon glyphicon-pencil"></i></button><td><button type="button" class="btn btn-danger btn-xs slet_bruger" id="' + response.id + '" onclick="return confirm('+ confirm_txt + ')"><i class="glyphicon glyphicon-trash"></i></button></td></tr>');
+
+					$('#brugere tr:last-child').fadeIn('slow');
+					// Nulstil formular
+					reset_form();
+				// Hvis det ikke lykkedes at oprette brugeren
+				} else if (data.status == false) {
+					status.attr('class', 'text-danger');
+					status.text("Fejl: Brugeren kunne ikke oprettes");
+				// Hvis værdien er alt andet, er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+				} else {
+					console.log(response);
+				}
+				// Nulstiller vores knap da indlæsning er færdig
+				btn.text(btn_txt);
+			} // Luk: success:
+		}); // Luk: $.ajax({
+	});  // Luk: (document).on('click', '.opret_bruger'
+
+	// Når der klikkes på knappen med id'et "rediger_bruger" køres denne funktion
+	$(document).on('click', '#rediger_bruger', function(e) {
+		// Forhindrer standard handling (send formular)
+		e.preventDefault();
+		//  Gem selector til vores knap i variablen btn
+		var btn = $(this);
+		// Gem nuværende tekst fra knappen i variablen btn_txt
+		var btn_txt = btn.text();
+		// For at signalere indlæsningstilstand, tilføjes klassen disabled og teksten "Indlæser..." til vores knap
+		btn.text('Indlæser...').addClass('disabled');
+		// Gem selector til vores status-felt i variablen status
+		var status = $('#status');
+		// Opret object med data fra felter til at poste med ajax til filer
+		var data_object = {
+			id:btn.val(),
+			//Tager værdi fra feltet brugernavn og sender med
+			brugernavn:$('#brugernavn').val(),
+			// Tager værdi fra feltet email og sender med
+			email:$('#email').val()
+		};
+		// Kør metoden ajax med data som POST og den returnede data fra angivet url som json
+		$.ajax({
+			type: 'POST',
+			dataType: 'json',
+			contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+			url: 'rediger_bruger.php',
+			data: data_object,
+			// Ved succes gemmes det returnerede data i variablen response
+			success: function (response) {
+				// Hvis det lykkedes at rette brugeren
+				if (response.status == true) {
+					status.attr('class', 'text-success');
+					status.text("Den valgte bruger blev rettet");
+					// Gem selector til den aktuelle række
+					var tr = $('#' + btn.val()).parents('tr');
+					// Skjuler rækker
+					tr.fadeOut('fast');
+					// Opret variablen til besked ved bekræftigelse af sletning
+					var confirm_txt = "'Er du sikker på du vil slette denne bruger?'";
+					// Tilføj opdateret bruger til visning i tabel med rækken skjult, da vi vil bruge .fadeIn til visning, så man er mere opmærksom herpå
+					tr.html('<td>' + data_object.id + '</td><td>' + data_object.brugernavn + '</td><td>' + data_object.email + '</td><td><button type="button" class="btn btn-warning btn-xs hent_bruger" id="' + data_object.id + '"><i class="glyphicon glyphicon-pencil"></i></button><td><button type="button" class="btn btn-danger btn-xs slet_bruger" id="' + data_object.id + '" onclick="return confirm(' + confirm_txt + ')"><i class="glyphicon glyphicon-trash"></i></button></td>');
+					tr.fadeIn('slow');
+					// Skjul rediger-knap og fjern id fra knappens value
+					$('#rediger_bruger').val('').hide();
+					// Skjul knap til annuller
+					$('#annuller').hide();
+					// Vis opret-knap
+					$('#opret_bruger').show();
+					// Nulstil formular
+					reset_form();
+				// Hvis det ikke lykkedes at rette brugeren
+				} else if (response.status == false) {
+					status.attr('class', 'text-danger');
+					status.text("Fejl: Brugeren kunne ikke rettes");
+					// Nulstiller vores knap da indlæsning er færdig
+					btn.text(btn_txt);
+				// Hvis værdien er alt andet, er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+				} else {
+					console.log(response);
+					// Nulstiller vores knap da indlæsning er færdig
+					btn.text(btn_txt);
+				}
+			} // Luk: success:
+		}); // Luk: $.ajax({
+	}); // Luk: (document).on('click', '.rediger_bruger'
+
+	// Når der klikkes på knappen med class'en "slet_bruger" køres denne funktion
+	$(document).on('click', '.slet_bruger', function(e) {
+		// Forhindrer standard handling
+		e.preventDefault();
+		//  Gem selector til vores knap i variablen btn
+		var btn = $(this);
+		// Gem nuværende tekst fra knappen i variablen btn_txt
+		var btn_txt = btn.html();
+		// For at signalere indlæsningstilstand, tilføjes klassen disabled og ikon til vores knap
+		btn.html('<i class="glyphicon glyphicon-refresh"></i>').addClass('disabled');
+		// Gem selector til vores andet status-felt i variablen status2
+		var status2 = $('#status2');
+		// Sender POST data til ny fil
+		$.ajax({
+			type: 'POST',
+			dataType: 'json',
+			contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+			url: 'slet_bruger.php',
+			data: {
+				//Hvert "Slet"-link fra oversigten har et id til den bruger vi vil slette. Vi henter værdien fra denne og sender med
+				id:$(this).attr('id')
+			},
+			success: function (response) {
+				// Hvis data er lig 1 (tjek slet_bruger.php linje 16-21), er brugeren slettet korret og nedenstående gøres
+				if (response.status) {
+					// Hvis brugernavnet er slettet, vil vi have det fjernet fra listen og vælger derfor den nærmeste række (tr) og fjerner den
+					btn.parents('tr').fadeOut('slow').promise().done(function () {
+						$(this).remove();
+					});
+				} else {
+					status2.attr('class', 'text-danger');
+					status2.text('Fejl: Brugeren kunne ikke slettes');
+					// Nulstiller vores knap da indlæsning er færdig
+					btn.html(btn_txt).removeClass('disabled');
+				}
+			} // Luk: success:
+		}); // Luk: $.ajax({
+	}); // Luk: (document).on('click', '.slet_bruger'
+
+	// Når der klikkes på knappen med id'et "vis_alle_brugere" køres denne funktion
+	$(document).on('click', '#vis_alle_brugere', function(e){
+		// Forhindrer standard handling
+		e.preventDefault();
+		//  Gem selector til vores knap i variablen btn
+		var btn = $(this);
+		// Gem nuværende tekst fra knappen i variablen btn_txt
+		var btn_txt = btn.text();
+		// For at signalere indlæsningstilstand, tilføjes klassen disabled og teksten "Indlæser..." til vores knap
+		btn.text('Indlæser...').addClass('disabled');
+		// Gem selector til element vi skal tilføje rækker med data
+		var brugere = $('#brugere');
+
+		// Henter JSON-encoded data fra hent_alle_brugere.php og gem i variablen response
+		$.getJSON('hent_alle_brugere.php', function(response){
+			// Hvis der er mere end et object i data, skal vi tilføje data til vores skjulte tabel
+			if (response.length > 0) {
+				// For at undgå vi får tilføjet de samme brugere igen, for hver gang funktion køres, tømmer vi vores div med id'et brugere inden vi indsætter opdaterede rækker fra data.
+				brugere.empty();
+				// Opret variablen til besked ved bekræftigelse af sletning
+				var confirm_txt = "'Er du sikker på du vil slette denne bruger?'";
+				// Da data returnerer flere objecter, konverteret fra vores multi-array i PHP, så kører vi først en each, for hvert element vi har med værdier. Derudover indsætter vi værdier fra hvert object, hvor vi har gemt id, brugernavn og email. Data indsættes i vores tabel i tbody med id'et "brugere"
+				$.each(response, function(i,value){
+					brugere.append('<tr><td>' + value.id + '</td><td>' + value.brugernavn + '</td><td>' + value.email + '</td><td><button type="button" class="btn btn-warning btn-xs hent_bruger" id="' + value.id + '"><i class="glyphicon glyphicon-pencil"></i></button></td><td><button type="button" class="btn btn-danger btn-xs slet_bruger" id="' + value.id + '" onclick="return confirm('+ confirm_txt + ')"><i class="glyphicon glyphicon-trash"></i></button></td></tr>');
+				});
+			// Ellers skal denne besked vises i tabellen
+			} else if (response.length == 0) {
+				brugere.text('<tr><td colspan="5">Der blev ikke fundet nogle brugere</td></tr>');
+			// Hvis værdien er alt andet, er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+			} else {
+				console.log(response);
+			}
+			// Fjerner display: none; fra elementet og bruger slideeffect for at gøre mere opmærksom på handling
+			$('#brugere_container').slideToggle();
+			// Nulstiller vores knap da indlæsning er færdig
+			btn.text(btn_txt).removeClass('disabled');
+		}); // Luk: $.getJSON('hent_alle_brugere.php'
+	}); // Luk: (document).on('click', '.vis_alle_brugere'
+
+	// Når der klikkes på knapppen med id'et annuller, nulstilles formular fra rediger til opret
+	$(document).on('click', '#annuller', function() {
+		// Skjul rediger-knap og fjern id fra knappens value
+		$('#rediger_bruger').val('').hide();
+		// Skjul knap til annuller
+		$('#annuller').hide();
+		// Vis opret-knap
+		$('#opret_bruger').show();
+		// Nulstil formular
+		reset_form();
+	});
+
+	// Når der klikkes på knappen med class'en "hent_bruger" køres denne funktion
+	$(document).on('click', '.hent_bruger', function(e) {
+		// Forhindrer standard handling
+		e.preventDefault();
+		//  Gem selector til vores knap i variablen btn
+		var btn = $(this);
+		// Gem nuværende tekst fra knappen i variablen btn_txt
+		var btn_txt = btn.html();
+		// For at signalere indlæsningstilstand, tilføjes klassen disabled og ikon til vores knap
+		btn.html('<i class="glyphicon glyphicon-refresh"></i>').addClass('disabled');
+		// Gem selector til vores andet status-felt i variablen status
+		var status2 = $('#status2');
+		$.ajax({
+			type: 'POST',
+			dataType: 'json',
+			contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
+			url: 'hent_bruger.php',
+			data: {
+				// Hvert "Rediger"-link fra oversigten har et id til den bruger vi vil slette. Vi henter værdien fra denne og sender med
+				id:$(this).attr('id')
+			},
+			// Funktion på modtaget data fra slet_bruger.php (response er alt output fra filen)
+			success: function (response) {
+				// Hvis det lykkedes det at hente en bruger og vi kan skrive info til formular
+				if( response ) {
+					// Indsæt hentet brugernavn i feltet og indsæt attributten data-id med brugerens id
+					$('#brugernavn').val(response.brugernavn).data('id', response.id);
+					// Indsæt hentet email i feltet og indsæt attributten data-id med brugerens id
+					$('#email').val(response.email).data('id', response.id);
+					// Vis rediger-knap og tilføj id til knappens value
+					$('#rediger_bruger').val(response.id).show();
+					// Vis knap til annuller
+					$('#annuller').show();
+					// Skjul opret-knap
+					$('#opret_bruger').hide();
+				// Ellers er der sandsynligvis sket en fejl og vi tilføjer tekst fra fil til loggen
+				} else {
+					console.log(response);
+				}
+				// Nulstiller vores knap da indlæsning er færdig
+				btn.html(btn_txt).removeClass('disabled');
+			} // Luk: success:
+		}); // Luk: $.ajax({
+	}); // Luk: $(document).on('click', '.hent_bruger'
+}); // Luk ready-metoden
+</script>
+</body>
+</html>
