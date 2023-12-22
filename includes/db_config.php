@@ -2,7 +2,7 @@
 $db_host	= "localhost"; // Hostnavn på database
 $db_user	= "root"; // Brugernavn til database
 $db_pass	= ""; // Adgangskode til database
-$db_name	= "oevelser_jquery_ajax"; // Databasenavn
+$db_name	= "crud_med_jquery_ajax_php"; // Databasenavn
 
 $link = mysqli_connect($db_host, $db_user, $db_pass, $db_name); // Opretter forbindelse til databasen
 mysqli_set_charset($link, "utf8"); // Sætter tegnsætning til utf8
